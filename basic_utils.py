@@ -68,10 +68,12 @@ class myTokenizer():
         return tokens
 
 
-def load_model_emb(args, tokenizer):
+def load_model_emb(args, tokenizer, checkpoint_path=None):
     ### random emb or pre-defined embedding like glove embedding. You can custome your own init here.
     model = torch.nn.Embedding(tokenizer.vocab_size, args.hidden_dim)
-    path_save = '{}/random_emb.torch'.format(args.checkpoint_path)
+    if checkpoint_path is None:
+        checkpoint_path = args.checkpoint_path
+    path_save = '{}/random_emb.torch'.format(checkpoint_path)
     path_save_ind = path_save + ".done"
     if int(os.environ['LOCAL_RANK']) == 0:
         if os.path.exists(path_save):
@@ -97,11 +99,11 @@ def load_tokenizer(args):
     tokenizer = myTokenizer(args)
     return tokenizer
 
-def load_defaults_config():
+def load_defaults_config(conf_path: str = 'diffuseq/config.json' ):
     """
     Load defaults for training args.
     """
-    with open('diffuseq/config.json', 'r') as f:
+    with open(conf_path, 'r') as f:
         return json.load(f)
 
 
