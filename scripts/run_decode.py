@@ -4,6 +4,8 @@ import random
 sys.path.append('.')
 sys.path.append('..')
 
+import pdb
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='decoding args.')
@@ -30,9 +32,11 @@ if __name__ == '__main__':
     os.chdir(dname)
 
     output_lst = []
-    for lst in glob.glob(args.model_dir):
+    # for lst in glob.glob(args.model_dir):
+    for lst in os.listdir(args.model_dir):
         print(lst)
-        checkpoints = sorted(glob.glob(f"{lst}/{args.pattern}*pt"))[::-1]
+        # checkpoints = sorted(glob.glob(f"{lst}/{args.pattern}*pt"))[::-1]
+        checkpoints = sorted(glob.glob(f"{args.model_dir}/{lst}/{args.pattern}*.pt"))[::-1]
 
         out_dir = 'generation_outputs'
         if not os.path.isdir(out_dir):

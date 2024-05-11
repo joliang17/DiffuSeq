@@ -591,11 +591,17 @@ class GaussianDiffusion:
         reshaped_x_t = x_t
         logits = get_logits(reshaped_x_t)  # bsz, seqlen, vocab
         loss_fct = th.nn.CrossEntropyLoss(reduction='none')
-        decoder_nll = loss_fct(logits.view(-1, logits.size(-1)), input_ids.view(-1)).view(input_ids.shape)
+        # decoder_nll = loss_fct(logits.view(-1, logits.size(-1)), input_ids.view(-1)).view(input_ids.shape)
+        # only consider logits for text part
+        logits_text = logits[:, 50:, :]
+        decoder_nll = loss_fct(logits_text.reshape(-1, logits_text.size(-1)), input_ids.reshape(-1)).view(input_ids.shape)
         if mask != None:
-            decoder_nll *= mask
+            # decoder_nll *= mask
+            mask_text = mask[:, 50:]
+            decoder_nll *= mask_text
         if mask != None:
-            decoder_nll = decoder_nll.sum(dim=-1)/mask.sum(dim=-1)
+            # decoder_nll = decoder_nll.sum(dim=-1)/mask.sum(dim=-1)
+            decoder_nll = decoder_nll.sum(dim=-1)/mask_text.sum(dim=-1)
         else:
             decoder_nll = decoder_nll.mean(dim=-1)
 
@@ -634,7 +640,8 @@ class GaussianDiffusion:
         assert 'input_ids' in model_kwargs
         input_ids_x = model_kwargs.pop('input_ids').to(t.device)
         input_ids_mask = model_kwargs.pop('input_mask').to(t.device)
-        x_start_mean = model.model.module.get_embeds(input_ids_x)
+        # x_start_mean = model.model.module.get_embeds(input_ids_x)
+        x_start_mean = x_start
         
         std = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod,
                                    th.tensor([0]).to(x_start_mean.device),
@@ -645,7 +652,8 @@ class GaussianDiffusion:
 
         x_t = self.q_sample(x_start, t, noise=noise, mask=input_ids_mask, mean_embed=model.mean_embed) # reparametrization trick.
 
-        get_logits = model.model.module.get_logits
+        # get_logits = model.model.module.get_logits
+        get_logits = model.model.get_logits
 
         terms = {}
 

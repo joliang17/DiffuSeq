@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=1,2 python -m torch.distributed.launch --nproc_per_node=2 --master_port=12231 --use_env run_train.py \
+CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 --master_port=12231 --use_env run_train.py \
 --diff_steps 2000 \
 --lr 0.0001 \
 --learning_steps 50000 \
@@ -9,7 +9,7 @@ CUDA_VISIBLE_DEVICES=1,2 python -m torch.distributed.launch --nproc_per_node=2 -
 --bsz 425 \
 --microbatch 425 \
 --dataset qqp \
---data_dir {path-to-datasets} \
+--data_dir /scratch/yx3038/Research/bi-diffusion/DiffuSeq/datasets/CommonsenseConversation \
 --learned_mean_embed True \
 --denoise True \
 --vocab bert \
