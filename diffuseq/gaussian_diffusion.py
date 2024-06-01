@@ -608,6 +608,7 @@ class GaussianDiffusion:
                                    x_start_mean.shape)
         # print(std.shape, )
         # x_start_log_var = 2 * th.log(std)
+        # TODO: check value of std
         x_start = self._get_x_start(x_start_mean, std)
         # print(x_start_mean.shape, x_start.shape)
         if noise is None:
