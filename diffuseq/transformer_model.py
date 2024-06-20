@@ -113,9 +113,20 @@ class TransformerNetModel(nn.Module):
     def get_embeds(self, input_ids):
         return self.word_embedding(input_ids)
 
-    def get_logits(self, hidden_repr):
+    def get_logits(self, hidden_repr, input_ids = None):
         if self.logits_mode == 1:
             return self.lm_head(hidden_repr)
+            # # TODO:
+            # embedding_text = self.lm_head.decoder.transformer.wte(input_ids)  # [bs, 77, H]
+            # # use eos token's embedding
+            # clip_feat = hidden_repr[:, 0, :]
+            # clip_feat /= clip_feat.norm(dim=-1, keepdim=True)
+            # embedding_clip = self.lm_head.clip_project(clip_feat)  # [bs, H]
+            # embedding_clip = embedding_clip.reshape(-1,1,self.lm_head.embedding_size)
+            # embedding_cat = torch.cat([embedding_clip, embedding_text],dim=1)
+            # out = self.lm_head.decoder(inputs_embeds=embedding_cat)
+            # return out.logits[:, :-1]
+
         elif self.logits_mode == 2: # standard cosine similarity
             text_emb = hidden_repr
             emb_norm = (self.lm_head.weight ** 2).sum(-1).view(-1, 1)  # vocab

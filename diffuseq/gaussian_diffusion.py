@@ -589,17 +589,18 @@ class GaussianDiffusion:
         :return: x_0
         '''
         reshaped_x_t = x_t
-        logits = get_logits(reshaped_x_t)  # bsz, seqlen, vocab
-        loss_fct = th.nn.CrossEntropyLoss(reduction='none')
+        text_only_ids = input_ids[:, 1:]
+        text_start_idx = 51
+        logits_text = get_logits(reshaped_x_t[:, text_start_idx:, :], text_only_ids)  # bsz, seqlen, vocab
+        loss_fct = th.nn.CrossEntropyLoss(reduction='none', ignore_index=49407)
         # decoder_nll = loss_fct(logits.view(-1, logits.size(-1)), input_ids.view(-1)).view(input_ids.shape)
         # only consider logits for text part
-        logits_text = logits[:, 50:, :]
-        decoder_nll = loss_fct(logits_text.reshape(-1, logits_text.size(-1)), input_ids.reshape(-1)).view(input_ids.shape)
+        # logits_text = logits[:, 50:, :]
+        decoder_nll = loss_fct(logits_text.reshape(-1, logits_text.size(-1)), text_only_ids.reshape(-1)).view(text_only_ids.shape)
         if mask != None:
             # decoder_nll *= mask
-            mask_text = mask[:, 50:]
+            mask_text = mask[:, text_start_idx:]
             decoder_nll *= mask_text
-        if mask != None:
             # decoder_nll = decoder_nll.sum(dim=-1)/mask.sum(dim=-1)
             decoder_nll = decoder_nll.sum(dim=-1)/mask_text.sum(dim=-1)
         else:
@@ -642,9 +643,8 @@ class GaussianDiffusion:
         input_ids_mask = model_kwargs.pop('input_mask').to(t.device)
         # x_start_mean = model.model.module.get_embeds(input_ids_x)
         x_start_mean = x_start
-        
         std = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod,
-                                   th.tensor([0]).to(x_start_mean.device),
+                                   th.tensor([0]).to(t.device),
                                    x_start_mean.shape)
         x_start = self._get_x_start(x_start_mean, std)
         if noise is None:
@@ -660,7 +660,12 @@ class GaussianDiffusion:
         target = x_start
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
         assert model_output.shape == target.shape == x_start.shape
-        terms["mse"] = mean_flat((target - model_output) ** 2)
+        mse_diff = target - model_output
+        mse_diff = mse_diff * input_ids_mask.unsqueeze(-1)
+        # terms["mse"] = mean_flat((target - model_output) ** 2)
+        terms["mse"] = mean_flat(mse_diff ** 2)
+        terms["mse_diff"] = mse_diff
+        terms["model_output"] = model_output
 
         model_out_x_start = self._x0_helper(model_output, x_t, t)['pred_xstart'] # predicted_xstart = model_output
         t0_mask = (t == 0)
@@ -669,11 +674,16 @@ class GaussianDiffusion:
 
         out_mean, _, _ = self.q_mean_variance(x_start, th.LongTensor([self.num_timesteps - 1]).to(x_start.device))
         tT_loss =  mean_flat(out_mean ** 2)
+        terms["tT_loss"] = tT_loss
 
         decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x) # embedding regularization
+        terms["emb_reg"] = decoder_nll
         terms["nll"] = self._token_discrete_loss(model_out_x_start, get_logits, input_ids_x, mask=input_ids_mask, truncate=True, t=t) # x_0->model_out_x_start
+        logits_pred = get_logits(model_out_x_start, input_ids_x)  # bsz, seqlen, vocab
+        terms["logits_pred"] = logits_pred
 
         terms["loss"] = terms["mse"] + decoder_nll + tT_loss
+        # terms["loss"] = terms["mse"] + tT_loss
 
         if model.mean_embed is not None:
             terms["loss"] = terms["loss"] + self.reg_rate * model.mean_embed.norm(p=2).sum()
