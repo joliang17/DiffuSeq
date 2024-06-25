@@ -11,6 +11,7 @@ import math
 import numpy as np
 import torch as th
 import sys
+import pdb
 sys.path.append('.')
 
 import torch.nn as nn
@@ -171,6 +172,7 @@ class GaussianDiffusion:
 
         self.mapping_func = None # implement in train main()
         self.add_mask_noise = False # TODO
+        self.pad_id = 0
 
         # presaved as tensor
         self.sqrt_alphas_cumprod = th.from_numpy(self.sqrt_alphas_cumprod).to(device=device)
@@ -588,21 +590,38 @@ class GaussianDiffusion:
         :param x_start_mean: word embedding
         :return: x_0
         '''
-        reshaped_x_t = x_t
-        text_only_ids = input_ids[:, 1:]
-        text_start_idx = 51
-        logits_text = get_logits(reshaped_x_t[:, text_start_idx:, :], text_only_ids)  # bsz, seqlen, vocab
-        loss_fct = th.nn.CrossEntropyLoss(reduction='none', ignore_index=49407)
-        # decoder_nll = loss_fct(logits.view(-1, logits.size(-1)), input_ids.view(-1)).view(input_ids.shape)
-        # only consider logits for text part
-        # logits_text = logits[:, 50:, :]
-        decoder_nll = loss_fct(logits_text.reshape(-1, logits_text.size(-1)), text_only_ids.reshape(-1)).view(text_only_ids.shape)
+        loss_fct = th.nn.CrossEntropyLoss(reduction='none', ignore_index=self.pad_id)
+
+        #######################
+        # original loss
+        # reshaped_x_t = x_t
+        # text_only_ids = input_ids[:, 1:]
+        # text_start_idx = 51
+        # logits_text = get_logits(reshaped_x_t[:, text_start_idx:, :], text_only_ids)  # bsz, seqlen, vocab
+        # decoder_nll = loss_fct(logits_text.reshape(-1, logits_text.size(-1)), text_only_ids.reshape(-1)).view(text_only_ids.shape)
+
+        #######################
+        # loss with mask
+        # input_ids: not used in get_logits
+        mask_sum = th.sum(mask, dim=-1)
+        uniq_val = th.unique(mask_sum)
+        if len(uniq_val) == 1:
+            # for image-text task: input_ids shape: [128 - image token]
+            # padding to [128]
+            padding_size = mask.shape[-1] - input_ids.shape[-1]
+            input_ids = F.pad(input_ids, (padding_size, 0), "constant", 0)
+
+        logits_text = get_logits(x_t, input_ids)  # bsz, seqlen, vocab
+        # input_ids shape: [bs, 128]
+        decoder_nll = loss_fct(logits_text.reshape(-1, logits_text.size(-1)), input_ids.reshape(-1)).view(input_ids.shape)
+        #######################
+
         if mask != None:
-            # decoder_nll *= mask
-            mask_text = mask[:, text_start_idx:]
-            decoder_nll *= mask_text
-            # decoder_nll = decoder_nll.sum(dim=-1)/mask.sum(dim=-1)
-            decoder_nll = decoder_nll.sum(dim=-1)/mask_text.sum(dim=-1)
+            decoder_nll *= mask
+            # mask_text = mask[:, text_start_idx:]
+            # decoder_nll *= mask_text
+            decoder_nll = decoder_nll.sum(dim=-1)/mask.sum(dim=-1)
+            # decoder_nll = decoder_nll.sum(dim=-1)/mask_text.sum(dim=-1)
         else:
             decoder_nll = decoder_nll.mean(dim=-1)
 
@@ -676,7 +695,7 @@ class GaussianDiffusion:
         tT_loss =  mean_flat(out_mean ** 2)
         terms["tT_loss"] = tT_loss
 
-        decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x) # embedding regularization
+        decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x, mask=input_ids_mask, ) # embedding regularization
         terms["emb_reg"] = decoder_nll
         terms["nll"] = self._token_discrete_loss(model_out_x_start, get_logits, input_ids_x, mask=input_ids_mask, truncate=True, t=t) # x_0->model_out_x_start
         logits_pred = get_logits(model_out_x_start, input_ids_x)  # bsz, seqlen, vocab
