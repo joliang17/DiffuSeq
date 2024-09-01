@@ -41,7 +41,7 @@ class ScheduleSampler(ABC):
         The weights needn't be normalized, but must be positive.
         """
 
-    def sample(self, batch_size, device, t_max=None):
+    def sample(self, batch_size, device, t_min=None, t_max=None):
         """
         Importance-sample timesteps for a batch.
 
@@ -52,8 +52,8 @@ class ScheduleSampler(ABC):
                  - weights: a tensor of weights to scale the resulting losses.
         """
         w = self.weights()
-        if t_max is not None:
-            w = w[:int(t_max * len(w))]
+        if t_min is not None or t_max is not None:
+            w = w[int(t_min * len(w)):int(t_max * len(w))+1]
 
         p = w / np.sum(w)
         indices_np = np.random.choice(len(p), size=(batch_size,), p=p)
